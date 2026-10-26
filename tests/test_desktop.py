@@ -83,7 +83,9 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     ])
                 elif os.name == "nt":
                     arguments.remove("--use-webgpu-adapter=swiftshader")
-                    arguments.append("--use-angle=d3d11")
+                    # Software drivers on hosted Windows runners can compile slowly.
+                    # The test's outer timeout still bounds a genuinely stuck GPU.
+                    arguments.extend(["--use-angle=d3d11", "--disable-gpu-watchdog", "--v=1"])
                 else:
                     arguments.extend(["--use-angle=swiftshader", "--use-vulkan=swiftshader"])
             process = await asyncio.to_thread(subprocess.Popen, arguments,
@@ -92,6 +94,12 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                 page = await connect(port); pages.append(page)
                 await page.set_viewport(1280, 900, scale=1)
                 await page.wait_for("document.querySelector('pyjs-app')?.editor != null", "GPU editor", timeout=90)
+                await page.evaluate("""(() => {
+                    const device = document.querySelector('pyjs-app').editor.device;
+                    globalThis.gpuDiagnostics = {adapter: device.adapterInfo?.toJSON?.() ?? device.adapterInfo};
+                    device.lost.then(info => {gpuDiagnostics.lost = {reason: info.reason, message: info.message};});
+                    device.addEventListener('uncapturederror', event => {gpuDiagnostics.error = event.error.message;});
+                })()""")
                 assert await page.evaluate("typeof require") == "undefined"
                 assert await page.evaluate("location.protocol") == "file:"
                 assert await page.evaluate("document.querySelectorAll('[data-kind=dir]').length") > 5
@@ -155,7 +163,7 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     item = {"exceptions": page.exceptions, "console": page.console}
                     try:
                         item["page"] = await asyncio.wait_for(
-                            page.evaluate("({url:location.href,text:document.body.innerText})"), timeout=5)
+                            page.evaluate("({url:location.href,text:document.body.innerText,gpu:globalThis.gpuDiagnostics})"), timeout=5)
                     except Exception as error:  # noqa: BLE001 -- Diagnostics must preserve the original failure.
                         item["error"] = str(error)
                     diagnostics["pages"].append(item)
