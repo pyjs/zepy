@@ -69,13 +69,17 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
             if os.environ.get("ZEPY_ELECTRON_HEADLESS", "1") != "0":
                 arguments.extend([
                     "--no-sandbox", "--force-device-scale-factor=1",
-                    "--enable-features=Vulkan", "--use-angle=swiftshader", "--use-vulkan=swiftshader",
-                    "--use-webgpu-adapter=swiftshader", "--disable-vulkan-surface", "--enable-unsafe-webgpu",
+                    "--use-webgpu-adapter=swiftshader", "--enable-unsafe-webgpu", "--enable-unsafe-swiftshader",
+                    "--enable-logging=stderr",
                     "--disable-background-timer-throttling", "--disable-renderer-backgrounding",
                     "--disable-backgrounding-occluded-windows",
                 ])
                 if os.name != "nt" and sys.platform != "darwin":
-                    arguments.extend(["--ozone-platform=headless", "--ozone-override-screen-size=1440,1000"])
+                    arguments.extend([
+                        "--enable-features=Vulkan", "--use-angle=swiftshader", "--use-vulkan=swiftshader",
+                        "--disable-vulkan-surface", "--ozone-platform=headless",
+                        "--ozone-override-screen-size=1440,1000",
+                    ])
             process = await asyncio.to_thread(subprocess.Popen, arguments,
                 cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
             try:
@@ -138,6 +142,17 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     "continued":True, "stopped":True, "python_server":False, "codex_chat_and_resume":True,
                     "headless":os.environ.get("ZEPY_ELECTRON_HEADLESS", "1") != "0",
                     "arguments":arguments}, indent=2) + "\n")
+            except Exception:
+                diagnostics = []
+                for page in pages:
+                    item = {"exceptions": page.exceptions, "console": page.console}
+                    try:
+                        item["page"] = await page.evaluate("({url:location.href,text:document.body.innerText})")
+                    except (OSError, RuntimeError, TimeoutError) as error:
+                        item["error"] = str(error)
+                    diagnostics.append(item)
+                (ARTIFACTS / "failure.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+                raise
             finally:
                 for page in pages:
                     await page.session.close()

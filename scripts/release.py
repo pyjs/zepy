@@ -206,6 +206,7 @@ def assemble(wheels: list[Path], output: Path, index_url: str, release_url: str)
         content = [(member, tar.extractfile(member).read() if member.isfile() else None) for member in tar]
     with tarfile.open(sdist, "w:gz") as tar:
         for member, data in content:
+            member.name = member.name.replace("\\", "/")
             tar.addfile(member, io.BytesIO(data) if data is not None else None)
         for filename in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
             tar.add(ROOT / filename, arcname=f"zepy-{VERSION}/" + filename)
