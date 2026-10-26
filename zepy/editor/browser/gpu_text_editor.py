@@ -1,5 +1,7 @@
 """GPU editor with a piece buffer, glyph atlas, and caret rendering."""
 
+from typing import TypedDict, cast
+
 from pyjs import js
 from pyjs.web.events import Event, InputEvent, KeyboardEvent, MouseEvent, WheelEvent
 from pyjs.web.html import HTMLCanvasElement, HTMLElement, HTMLTextAreaElement
@@ -71,6 +73,10 @@ from zepy.editor.common.wrap import (
 )
 
 
+class DeviceLimits(TypedDict):
+    maxStorageBuffersInVertexStage: int
+
+
 @js
 class HistoryStep:
     def __init__(self, value: str, line: int, column: int):
@@ -138,9 +144,10 @@ class GpuTextEditor(Disposable):
         if get_gpu() is None:
             return None
         adapter = await get_gpu().requestAdapter()
-        if adapter is None:
+        if adapter is None or adapter.limits.maxStorageBuffersInVertexStage < 2:
             return None
-        device = await adapter.requestDevice()
+        limits = cast(dict[str, int | None], DeviceLimits(maxStorageBuffersInVertexStage=2))
+        device = await adapter.requestDevice(requiredLimits=limits)
         context = get_webgpu_context(canvas)
         format = get_gpu().getPreferredCanvasFormat()
         context.configure(GPUCanvasConfiguration(device, format))
