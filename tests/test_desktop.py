@@ -83,7 +83,7 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     ])
                 elif os.name == "nt":
                     arguments.remove("--use-webgpu-adapter=swiftshader")
-                    arguments.extend(["--use-angle=d3d11", "--use-webgpu-adapter=d3d11", "--force-webgpu-compat"])
+                    arguments.append("--use-angle=d3d11")
                 else:
                     arguments.extend(["--use-angle=swiftshader", "--use-vulkan=swiftshader"])
             process = await asyncio.to_thread(subprocess.Popen, arguments,
