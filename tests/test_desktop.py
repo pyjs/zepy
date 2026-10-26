@@ -83,20 +83,30 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     ])
                 elif os.name == "nt":
                     arguments.remove("--use-webgpu-adapter=swiftshader")
-                    # Software drivers on hosted Windows runners can compile slowly.
-                    # The test's outer timeout still bounds a genuinely stuck GPU.
-                    arguments.extend(["--use-angle=d3d11", "--disable-gpu-watchdog", "--v=1"])
+                    arguments.extend(["--use-angle=d3d11", "--use-webgpu-adapter=d3d11",
+                                      "--force-webgpu-compat", "--enable-logging=file",
+                                      f"--log-file={ARTIFACTS / 'chromium.log'}"])
                 else:
                     arguments.extend(["--use-angle=swiftshader", "--use-vulkan=swiftshader"])
             process = await asyncio.to_thread(subprocess.Popen, arguments,
                 cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
             try:
                 page = await connect(port); pages.append(page)
+                await page.evaluate("""(() => {
+                    globalThis.gpuDiagnostics = {destroyCalls: []};
+                    const destroy = GPUDevice.prototype.destroy;
+                    GPUDevice.prototype.destroy = function() {
+                        gpuDiagnostics.destroyCalls.push(new Error().stack);
+                        return destroy.call(this);
+                    };
+                })()""")
                 await page.set_viewport(1280, 900, scale=1)
                 await page.wait_for("document.querySelector('pyjs-app')?.editor != null", "GPU editor", timeout=90)
                 await page.evaluate("""(() => {
                     const device = document.querySelector('pyjs-app').editor.device;
-                    globalThis.gpuDiagnostics = {adapter: device.adapterInfo?.toJSON?.() ?? device.adapterInfo};
+                    const info = device.adapterInfo;
+                    gpuDiagnostics.adapter = {vendor:info.vendor,architecture:info.architecture,
+                        device:info.device,description:info.description,isFallbackAdapter:info.isFallbackAdapter};
                     device.lost.then(info => {gpuDiagnostics.lost = {reason: info.reason, message: info.message};});
                     device.addEventListener('uncapturederror', event => {gpuDiagnostics.error = event.error.message;});
                 })()""")
@@ -164,6 +174,16 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     try:
                         item["page"] = await asyncio.wait_for(
                             page.evaluate("({url:location.href,text:document.body.innerText,gpu:globalThis.gpuDiagnostics})"), timeout=5)
+                        item["probe"] = await asyncio.wait_for(page.evaluate("""(async () => {
+                            const adapter = await navigator.gpu.requestAdapter();
+                            if (!adapter) return {adapter:null};
+                            const device = await adapter.requestDevice();
+                            try {
+                                await device.queue.onSubmittedWorkDone();
+                                return {emptySubmission:'ok'};
+                            } catch(error) {return {error:String(error)};}
+                            finally {device.destroy();}
+                        })()"""), timeout=5)
                     except Exception as error:  # noqa: BLE001 -- Diagnostics must preserve the original failure.
                         item["error"] = str(error)
                     diagnostics["pages"].append(item)
