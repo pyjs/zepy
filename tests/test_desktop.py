@@ -86,7 +86,7 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     # Windows shared images need passthrough decoding and a Skia/GL D3D11 device.
                     arguments.extend(["--use-angle=d3d11", "--use-cmd-decoder=passthrough",
                                       "--disable-skia-graphite", "--use-webgpu-adapter=d3d11",
-                                      "--force-webgpu-compat", "--enable-logging=file",
+                                      "--ignore-gpu-blocklist", "--force-webgpu-compat", "--enable-logging=file",
                                       f"--log-file={ARTIFACTS / 'chromium.log'}"])
                 else:
                     arguments.extend(["--use-angle=swiftshader", "--use-vulkan=swiftshader"])
