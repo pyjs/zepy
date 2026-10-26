@@ -17,14 +17,16 @@ The Linux browser job retains a composited WebGPU screenshot for visual review.
    git push origin v0.1.0
    ```
 
-The tag workflow runs the full CI matrix again and publishes those tested
-wheels without rebuilding them. It creates a GitHub release with desktop wheels,
+The tag workflow requires a successful CI run for the exact tagged commit and
+publishes its tested wheels without rebuilding them. It creates a GitHub release with desktop wheels,
 standalone archives, a checksum manifest, and the small PyPI source archive.
 It then deploys the versioned wheel index to GitHub Pages and publishes to PyPI.
 The final job verifies a clean installation from public PyPI.
 
 `publish.yml` can also be dispatched against an existing version tag. Re-run
-failed jobs to reuse the tested artifacts. Published release assets and versioned
+failed jobs to reuse the tested artifacts. CI artifacts are retained for three
+days; if they have expired, dispatch `ci.yml` against the version tag first.
+Published release assets and versioned
 indexes cannot be changed to different contents; publish a new version instead.
 
 ## Distribution layout

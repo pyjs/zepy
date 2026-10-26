@@ -2,7 +2,11 @@
 
 from pyjs import js
 from pyjs.javascript import Float32Array
-from pyjs.web.html import HTMLCanvasElement
+from pyjs.web.html import (
+    CanvasRenderingContext2DSettings,
+    HTMLCanvasElement,
+    get_offscreen_2d_context,
+)
 from pyjs.web.webgpu import (
     GPUBindGroup,
     GPUBindGroupDescriptor,
@@ -15,8 +19,6 @@ from pyjs.web.webgpu import (
     GPUBufferUsage,
     GPUCanvasContext,
     GPUColorTargetState,
-    GPUCopyExternalImageDestInfo,
-    GPUCopyExternalImageSourceInfo,
     GPUDevice,
     GPUExtent3D,
     GPUFragmentState,
@@ -25,6 +27,8 @@ from pyjs.web.webgpu import (
     GPURenderPipeline,
     GPURenderPipelineDescriptor,
     GPUShaderModuleDescriptor,
+    GPUTexelCopyBufferLayout,
+    GPUTexelCopyTextureInfo,
     GPUTexture,
     GPUTextureDescriptor,
     GPUTextureUsage,
@@ -406,9 +410,16 @@ class GlyphRenderer(Disposable):
             self._glyphs[base + 5] = float(glyph.origin_offset_y)
             index = index + 1
         self._device.queue.writeBuffer(self._glyph_buffer, 0, self._glyphs)
-        self._device.queue.copyExternalImageToTexture(
-            GPUCopyExternalImageSourceInfo(self.atlas.source()),
-            GPUCopyExternalImageDestInfo(self._atlas_texture),
+        context = get_offscreen_2d_context(
+            self.atlas.source(), CanvasRenderingContext2DSettings(alpha=True, willReadFrequently=True),
+        )
+        if context is None:
+            raise RuntimeError("Glyph atlas 2d context is unavailable")
+        pixels = context.getImageData(0, 0, self.atlas.page_size, self.atlas.page_size)
+        self._device.queue.writeTexture(
+            GPUTexelCopyTextureInfo(self._atlas_texture),
+            pixels.data,
+            GPUTexelCopyBufferLayout(bytesPerRow=self.atlas.page_size * 4),
             width=self.atlas.page_size,
             height=self.atlas.page_size,
         )
