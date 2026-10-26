@@ -31,6 +31,30 @@ TARGETS = {
     "windows-x64": "win_amd64", "macos-x64": "macosx_12_0_x86_64",
     "macos-arm64": "macosx_12_0_arm64",
 }
+VULKAN_LOADER_REVISION = "6766411fec2f1e712576e42724b465fa8273d7ec"
+
+
+def supply_macos_vulkan(runtime: Path, minimum: str) -> None:
+    libraries = runtime / "Zepy.app/Contents/Frameworks/Electron Framework.framework/Libraries"
+    if (libraries / "libvulkan.dylib").is_file():
+        return
+    source = ROOT / ".pyjs/release/vulkan-loader"
+    build = source.parent / "vulkan-loader-build"
+    if not source.exists():
+        subprocess.run(["git", "init", str(source)], check=True)
+        subprocess.run(["git", "-C", str(source), "fetch", "--depth", "1",
+                        "https://github.com/KhronosGroup/Vulkan-Loader.git", VULKAN_LOADER_REVISION], check=True)
+        subprocess.run(["git", "-C", str(source), "checkout", "--detach", "FETCH_HEAD"], check=True)
+    revision = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+    if revision != VULKAN_LOADER_REVISION:
+        raise RuntimeError("Cached Vulkan loader source has a different revision")
+    subprocess.run(["cmake", "-S", str(source), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release",
+                    "-DUPDATE_DEPS=ON", "-DBUILD_TESTS=OFF", f"-DCMAKE_OSX_DEPLOYMENT_TARGET={minimum}"], check=True)
+    subprocess.run(["cmake", "--build", str(build), "--config", "Release", "--parallel", "3"], check=True)
+    shutil.copy2(build / "loader/libvulkan.dylib", libraries / "libvulkan.dylib")
+    licenses = runtime / "licenses/vulkan-loader"
+    shutil.copytree(source / "LICENSES", licenses, dirs_exist_ok=True)
+    shutil.copy2(source / "LICENSE.txt", licenses / "LICENSE.txt")
 
 
 def target_name() -> str:
@@ -109,6 +133,7 @@ def prepare_runtime(runtime: Path) -> str:
             license_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(dependency.locate_file(file), license_path)
     if system == "Darwin":
+        supply_macos_vulkan(runtime, ".".join(minimum[:2]))
         subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(runtime / "Zepy.app")], check=True)
     return executable
 

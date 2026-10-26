@@ -44,6 +44,11 @@ Application and dependency licenses ship inside the desktop archive. Electron's
 own license and Chromium notices are retained alongside Zepy's MIT notices and
 PyJS's BSD license. Release bundles use portable Python source-map paths.
 
+The macOS build also compiles a pinned Khronos Vulkan loader when Electron
+does not supply one. Chromium's SwiftShader fallback needs this library on
+machines without a usable GPU. Its licenses ship with the app. This build step
+requires CMake and Xcode's command-line tools; installed users need neither.
+
 ## Publishing configuration
 
 GitHub release jobs use the workflow's repository token. PyPI publication runs
