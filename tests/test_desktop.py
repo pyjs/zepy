@@ -83,7 +83,9 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     ])
                 elif os.name == "nt":
                     arguments.remove("--use-webgpu-adapter=swiftshader")
-                    arguments.extend(["--use-angle=d3d11", "--use-webgpu-adapter=d3d11",
+                    # Windows shared images require the passthrough command decoder.
+                    arguments.extend(["--use-angle=d3d11", "--use-cmd-decoder=passthrough",
+                                      "--use-webgpu-adapter=d3d11",
                                       "--force-webgpu-compat", "--enable-logging=file",
                                       f"--log-file={ARTIFACTS / 'chromium.log'}"])
                 else:
