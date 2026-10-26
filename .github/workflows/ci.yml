@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  tests:
+    name: Python, Node, and browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.13.4"
+      - run: uv sync --locked --extra test --group release --python 3.14
+      - name: Install browser libraries
+        run: sudo apt-get update && sudo apt-get install -y libnss3 libatk-bridge2.0-0 libgbm1 libxkbcommon0 libasound2t64 libgtk-3-0t64 libvulkan1 mesa-vulkan-drivers
+      - run: uv run --locked --extra test --group release ruff check zepy tests scripts
+      - run: uv run --locked --extra test --group release pytest -q --ignore=tests/test_desktop.py
+      - run: uv run --locked --extra test --group release pytest -q --pyjs-target=node
+      - run: uv run --locked --extra test --group release pytest -q --pyjs-target=web --pyjs-browser=managed
+      - name: Save visual test output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-renders
+          path: tests/renders/
+          retention-days: 3
+
+  desktop:
+    name: Desktop (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: linux-x64, runner: ubuntu-24.04}
+          - {target: linux-arm64, runner: ubuntu-24.04-arm}
+          - {target: windows-x64, runner: windows-2025}
+          - {target: macos-x64, runner: macos-15-intel}
+          - {target: macos-arm64, runner: macos-15}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.13.4"
+      - run: uv sync --locked --extra test --group release --python 3.14
+      - name: Install Linux runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libnss3 libatk-bridge2.0-0 libgbm1 libxkbcommon0 libasound2t64 libgtk-3-0t64 libvulkan1 mesa-vulkan-drivers
+      - name: Build desktop wheel
+        run: uv run --locked --extra test --group release python scripts/release.py build
+      - name: Install wheel without development dependencies
+        shell: bash
+        run: uv run --locked --extra test --group release python scripts/check_install.py dist/release/*.whl
+      - name: Test installed desktop app
+        run: uv run --locked --extra test --group release pytest -q tests/test_desktop.py tests/test_release.py
+      - name: Save desktop test output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-check-${{ matrix.target }}
+          path: dist/desktop-validation/
+          retention-days: 3
+      - name: Save tested desktop wheel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wheel-${{ matrix.target }}
+          path: dist/release/*.whl
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+
+  check:
+    name: All checks passed
+    if: always()
+    needs: [tests, desktop]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every test and platform build
+        env:
+          TESTS: ${{ needs.tests.result }}
+          DESKTOP: ${{ needs.desktop.result }}
+        run: test "$TESTS" = success && test "$DESKTOP" = success

@@ -1,0 +1,34 @@
+.envrc
+__pycache__/
+/.venv/
+/external/
+/dist/
+/build/
+/.local/
+/.codex/
+/.zepy/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+*.py[cod]
+*.main.js
+*.main.css
+*.main.html
+.pyjs/
+zepy.port
+*.sock
+/tests/renders/*.png
+# Expected images are test fixtures, not generated review artifacts.
+!/tests/renders/hello_zepy.png
+!/tests/renders/opened_file.png
+!/tests/renders/python_highlight.png
+!/tests/renders/typed_text.png
+# Private validation reports and machine-local evidence.
+/zepy/desktop/validation.json
+
+# Node/Electron bundles are generated from Python during builds/tests.
+*.cjs
+
+# Editor swap files.
+*.swp
+*.swo

@@ -1,0 +1,9 @@
+Shopping
+- oats
+- coffee
+- graph paper
+
+Editor
+- line numbers
+- selection
+- file explorer

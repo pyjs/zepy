@@ -1,0 +1,1 @@
+"""Text buffer model."""

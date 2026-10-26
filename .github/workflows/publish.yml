@@ -1,0 +1,120 @@
+name: Publish release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - id: version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          version=$(python scripts/release.py version)
+          test "$RELEASE_REF" = "refs/tags/v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  assets:
+    needs: [version, validate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.13.4"
+      - run: uv sync --locked --group release --python 3.14
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: wheel-*
+          path: dist/wheels
+          merge-multiple: true
+      - name: Assemble versioned package index and PyPI stub
+        run: |
+          uv run --locked --group release python scripts/release.py assemble \
+            --wheels dist/wheels --require-all \
+            --index-url "https://pyjs.github.io/zepy/releases/$RELEASE_VERSION/simple/" \
+            --release-url "https://github.com/pyjs/zepy/releases/download/v$RELEASE_VERSION/"
+          uv run --locked --group release twine check --strict dist/publication/pypi/*
+      - name: Publish tested GitHub release assets
+        run: uv run --locked --group release python scripts/publish.py assets --version "$RELEASE_VERSION"
+      - name: Retain existing indexes and add this release
+        run: uv run --locked --group release python scripts/publish.py site --version "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pypi-distribution
+          path: dist/publication/pypi/
+          retention-days: 3
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: dist/site
+
+  index:
+    needs: assets
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy package index
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+  pypi:
+    needs: [version, assets, index]
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/zepy
+    permissions:
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: pypi-distribution
+          path: dist
+      - name: Publish small source distribution
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+          attestations: false
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.13.4"
+      - name: Verify public installation
+        run: |
+          uv venv installed --python 3.14
+          uv pip install --python installed/bin/python --index-url https://pypi.org/simple "zepy==$RELEASE_VERSION"
+          cd /tmp
+          "$GITHUB_WORKSPACE/installed/bin/zepy" --version
+          "$GITHUB_WORKSPACE/installed/bin/zepy" --install-only
