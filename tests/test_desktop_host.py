@@ -177,3 +177,23 @@ async def test_failed_debugger_startup_cleans_window_and_state():
     assert window.destroyed
     assert len(windows) == 0
     assert debugger.state()["running"] is False
+
+
+@js
+async def test_debugger_stop_ignores_late_detach():
+    window = FakeWindow()
+    context = ContextAPI(window.create)
+    windows = set[WebContents]()
+    debugger = PythonDebugger(cast(HostContext, context), Workspace(""), windows)
+    debugger.target = cast(BrowserWindow, window.api)
+    contents = cast(WebContents, window.api.webContents)
+    debugger.target_contents = contents
+    windows.add(contents)
+    debugger.detached("unexpected")
+    assert debugger.state()["error"] == "Debugger detached: unexpected"
+    await debugger.action("stop")
+    debugger.detached("target closed")
+    assert window.destroyed
+    assert len(windows) == 0
+    assert debugger.state()["running"] is False
+    assert debugger.state()["error"] == ""

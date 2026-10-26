@@ -196,6 +196,8 @@ class PythonDebugger:
             self.revision += 1
 
     def detached(self, reason: str) -> None:
+        if self.target is None or self.target.isDestroyed():
+            return
         self.paused = False
         self.error = "Debugger detached: " + reason
         self.revision += 1
@@ -233,12 +235,12 @@ class PythonDebugger:
         self.script_ids = set[str]()
         self.error = ""
         self.generation += 1
-        window.on("closed", self.closed)
+        window.on("closed", lambda: self.closed() if self.target is window else None)
         debugger = window.webContents.debugger
         try:
             debugger.attach("1.3")
-            on_debug_message(debugger, self.message)
-            on_debug_detach(debugger, self.detached)
+            on_debug_message(debugger, lambda method, raw: self.message(method, raw) if self.target is window else None)
+            on_debug_detach(debugger, lambda reason: self.detached(reason) if self.target is window else None)
             await window.loadURL("about:blank")
             await self.command("Debugger.enable")
             for point in self.breakpoints:
@@ -255,8 +257,10 @@ class PythonDebugger:
         commands = {"continue": "Debugger.resume", "stepOver": "Debugger.stepOver",
                     "stepInto": "Debugger.stepInto", "stepOut": "Debugger.stepOut", "pause": "Debugger.pause"}
         if action == "stop":
-            if self.target is not None:
-                self.target.destroy()
+            window = self.target
+            if window is not None:
+                self.closed()
+                window.destroy()
             return self.state()
         if action not in commands:
             raise ValueError("Unknown debugger action")
