@@ -83,9 +83,9 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     ])
                 elif os.name == "nt":
                     arguments.remove("--use-webgpu-adapter=swiftshader")
-                    # Windows shared images require the passthrough command decoder.
+                    # Windows shared images need passthrough decoding and a Skia/GL D3D11 device.
                     arguments.extend(["--use-angle=d3d11", "--use-cmd-decoder=passthrough",
-                                      "--use-webgpu-adapter=d3d11",
+                                      "--disable-skia-graphite", "--use-webgpu-adapter=d3d11",
                                       "--force-webgpu-compat", "--enable-logging=file",
                                       f"--log-file={ARTIFACTS / 'chromium.log'}"])
                 else:
