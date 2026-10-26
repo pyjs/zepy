@@ -51,6 +51,7 @@ def chat_request(method: str, body: object = None) -> dict:
         if _bridge is None or _bridge.poll() is not None or key != _bridge_key:
             close_chat()
             node = NodeRuntime()
+            node.ensure()
             environment = {**os.environ, **node.environment()}
             script = Path(__file__).resolve().parents[2] / ".pyjs/desktop/codex.cjs"
             if not script.is_file():
