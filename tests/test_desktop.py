@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import pytest
@@ -148,14 +149,16 @@ def test_electron_browses_scrolls_and_debugs_its_python_source():
                     "headless":os.environ.get("ZEPY_ELECTRON_HEADLESS", "1") != "0",
                     "arguments":arguments}, indent=2) + "\n")
             except Exception:
-                diagnostics = []
+                diagnostics = {"traceback": traceback.format_exc(), "pages": []}
+                (ARTIFACTS / "failure.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
                 for page in pages:
                     item = {"exceptions": page.exceptions, "console": page.console}
                     try:
-                        item["page"] = await page.evaluate("({url:location.href,text:document.body.innerText})")
-                    except (OSError, RuntimeError, TimeoutError) as error:
+                        item["page"] = await asyncio.wait_for(
+                            page.evaluate("({url:location.href,text:document.body.innerText})"), timeout=5)
+                    except Exception as error:  # noqa: BLE001 -- Diagnostics must preserve the original failure.
                         item["error"] = str(error)
-                    diagnostics.append(item)
+                    diagnostics["pages"].append(item)
                 (ARTIFACTS / "failure.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
                 raise
             finally:
